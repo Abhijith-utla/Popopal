@@ -37,13 +37,13 @@ export const validateCredentials = () => {
   console.log('🔑 Access Key ID:', accessKey ? `${accessKey.substring(0, 8)}...` : 'Not set')
   console.log('🔐 Secret Access Key:', secretKey ? 'Set' : 'Not set')
   
-  if (!accessKey || accessKey === '' || accessKey === '') {
+  if (!accessKey || accessKey === '') {
     console.error('❌ AWS_ACCESS_KEY_ID is not set or invalid')
     console.error('💡 Make sure AWS_ACCESS_KEY_ID is set in .env.local')
     return false
   }
   
-  if (!secretKey || secretKey === '' || secretKey === '') {
+  if (!secretKey || secretKey === '') {
     console.error('❌ AWS_SECRET_ACCESS_KEY is not set or invalid')
     console.error('💡 Make sure AWS_SECRET_ACCESS_KEY is set in .env.local')
     return false
