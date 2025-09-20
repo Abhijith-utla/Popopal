@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Download, Mic, ArrowLeft, FileText, CheckCircle, Lock, RefreshCw } from "lucide-react"
@@ -13,13 +13,17 @@ interface DashboardViewProps {
 }
 
 export function DashboardView({ uploadedFiles, onBackToUpload, reportUrl }: DashboardViewProps) {
-  const [isListening, setIsListening] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [currentReportUrl, setCurrentReportUrl] = useState<string>(reportUrl || "")
   const [isMonitoring, setIsMonitoring] = useState(false)
   const [availableReports, setAvailableReports] = useState<any[]>([])
   const [monitoringStartTime, setMonitoringStartTime] = useState<number>(0)
   const [newReportDetected, setNewReportDetected] = useState<boolean>(false)
+  const [isListening, setIsListening] = useState(false)
+  
+  // Speech recognition refs
+  const recognitionRef = useRef<any>(null)
+  const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null)
 
   // Monitor for reports in the background
   useEffect(() => {
@@ -183,14 +187,107 @@ export function DashboardView({ uploadedFiles, onBackToUpload, reportUrl }: Dash
     }
   }
 
+  // Simple voice assistant handler
   const handleVoiceAssistant = () => {
-    setIsListening(!isListening)
     if (!isListening) {
-      alert("Voice assistant activated. Speak your question...")
+      startVoiceSession()
     } else {
-      alert("Voice assistant deactivated.")
+      stopVoiceSession()
     }
   }
+
+  const startVoiceSession = () => {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      alert('Speech recognition not supported in this browser. Please use Chrome or Edge.')
+      return
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    recognitionRef.current = new SpeechRecognition()
+    
+    recognitionRef.current.continuous = false
+    recognitionRef.current.interimResults = false
+    recognitionRef.current.lang = 'en-US'
+    recognitionRef.current.maxAlternatives = 1
+
+    recognitionRef.current.onstart = () => {
+      setIsListening(true)
+      console.log('🎤 Voice session started')
+    }
+
+    recognitionRef.current.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript
+      console.log('🎤 Speech recognized:', transcript)
+      
+      // Simple response
+      speakText("I heard you say: " + transcript)
+    }
+
+    recognitionRef.current.onerror = (event: any) => {
+      console.error('🎤 Speech recognition error:', event.error)
+      setIsListening(false)
+    }
+
+    recognitionRef.current.onend = () => {
+      setIsListening(false)
+      console.log('🎤 Speech recognition ended')
+    }
+
+    recognitionRef.current.start()
+  }
+
+  const stopVoiceSession = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+      setIsListening(false)
+    }
+  }
+
+  // Simple text-to-speech
+  const speakText = (text: string) => {
+    if (!('speechSynthesis' in window)) {
+      console.log('Speech synthesis not supported in this browser')
+      return
+    }
+
+    // Stop any ongoing speech
+    if (synthesisRef.current) {
+      speechSynthesis.cancel()
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.rate = 1.0
+    utterance.pitch = 1.0
+    utterance.volume = 0.9
+    utterance.lang = 'en-US'
+
+    utterance.onstart = () => {
+      console.log('🔊 Speech synthesis started')
+    }
+
+    utterance.onend = () => {
+      console.log('🔊 Speech synthesis ended')
+    }
+
+    utterance.onerror = (event) => {
+      console.error('🔊 Speech synthesis error:', event.error)
+    }
+
+    synthesisRef.current = utterance
+    speechSynthesis.speak(utterance)
+  }
+
+  // Cleanup effect
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop()
+      }
+      if (synthesisRef.current) {
+        speechSynthesis.cancel()
+      }
+    }
+  }, [])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background relative">
@@ -211,6 +308,7 @@ export function DashboardView({ uploadedFiles, onBackToUpload, reportUrl }: Dash
         <ArrowLeft className="h-5 w-5 group-hover:-translate-x-1 transition-transform" />
         <span className="text-sm font-medium">Back to Upload</span>
       </button>
+
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-2xl px-6 relative z-10">
         {/* Download Report Card */}
@@ -280,30 +378,34 @@ export function DashboardView({ uploadedFiles, onBackToUpload, reportUrl }: Dash
                   </CardContent>
                 </Card>
 
-        {/* Voice Assistant Card */}
-        <Card
-          className={`minimal-card p-8 text-center cursor-pointer transition-all duration-300 ${
-            isListening ? "ring-2 ring-[#374f6b]/30 bg-[#374f6b]/5" : ""
-          }`}
-          onClick={handleVoiceAssistant}
-        >
-          <CardContent className="space-y-6">
-            <div
-              className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center transition-all shadow-lg ${
-                isListening ? "bg-red-500 animate-pulse" : "police-gradient"
-              }`}
-            >
-              <Mic className="h-8 w-8 text-white" />
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-[#374f6b] mb-2">Voice Assistant</h3>
-              <p className="text-sm text-muted-foreground">
-                {isListening ? "Listening..." : "Ask questions about analysis"}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          {/* Voice Assistant Card */}
+          <Card
+            className={`minimal-card p-8 text-center cursor-pointer transition-all duration-300 ${
+              isListening ? "ring-2 ring-[#374f6b]/30 bg-[#374f6b]/5" : ""
+            }`}
+            onClick={handleVoiceAssistant}
+          >
+            <CardContent className="space-y-6">
+              <div
+                className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center transition-all shadow-lg ${
+                  isListening 
+                    ? "bg-red-500 animate-pulse" 
+                    : "police-gradient"
+                }`}
+              >
+                <Mic className="h-8 w-8 text-white" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold text-[#374f6b] mb-2">Voice Assistant</h3>
+                <p className="text-sm text-muted-foreground">
+                  {isListening 
+                    ? "Listening... Speak now" 
+                    : "Click to start voice recognition"}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
     </div>
   )
 }
