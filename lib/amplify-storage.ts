@@ -2,7 +2,9 @@
 // This uses AWS SDK directly for reliable S3 uploads
 
 import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { uploadData, list, remove, downloadData } from 'aws-amplify/storage'
 import { amplifyConfig, awsCredentials } from './amplify-config'
+import './amplify' // Initialize Amplify configuration
 
 export interface UploadProgress {
   fileName: string
@@ -48,8 +50,8 @@ class AmplifyStorageService {
   private region: string
 
   constructor() {
-    this.bucketName = amplifyConfig.Storage.AWSS3.bucket
-    this.region = amplifyConfig.Storage.AWSS3.region
+    this.bucketName = amplifyConfig.Storage.S3.bucket
+    this.region = amplifyConfig.Storage.S3.region
   }
 
   /**
@@ -90,8 +92,8 @@ class AmplifyStorageService {
       }).result
 
       return {
-        key: result.key,
-        url: `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${result.key}`,
+        key: key,
+        url: `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${key}`,
         bucket: this.bucketName,
         region: this.region
       }
@@ -165,12 +167,12 @@ class AmplifyStorageService {
       })
 
       return result.items.map(item => ({
-        name: item.key.split('/').pop() || 'Unknown',
+        name: item.path.split('/').pop() || 'Unknown',
         size: item.size || 0,
         type: 'video/mp4', // Default type
         uploadedAt: item.lastModified?.toISOString() || new Date().toISOString(),
-        s3Key: item.key,
-        s3Url: `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${item.key}`
+        s3Key: item.path,
+        s3Url: `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${item.path}`
       }))
     } catch (error) {
       console.error('Error listing videos:', error)
@@ -196,7 +198,7 @@ class AmplifyStorageService {
   async downloadVideo(key: string): Promise<Blob> {
     try {
       const result = await downloadData({ path: key })
-      return result.body as Blob
+      return result as unknown as Blob
     } catch (error) {
       console.error('Error downloading video:', error)
       throw new Error(`Failed to download video: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -208,4 +210,4 @@ class AmplifyStorageService {
 export const amplifyStorage = new AmplifyStorageService()
 
 // Export types for use in components
-export type { UploadProgress, UploadResult, VideoFile }
+export type { UploadProgress as AmplifyUploadProgress, UploadResult as AmplifyUploadResult, VideoFile as AmplifyVideoFile }

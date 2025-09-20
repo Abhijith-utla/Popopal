@@ -1,16 +1,20 @@
 // Amplify configuration and initialization
 import { Amplify } from 'aws-amplify'
-import { amplifyConfig, awsCredentials } from './amplify-config'
+import { amplifyConfig, awsCredentials, validateCredentials } from './amplify-config'
 
-// Configure Amplify with our settings including credentials
-const fullConfig = {
+// Validate credentials first
+validateCredentials()
+
+// Configure Amplify with our settings
+const config = {
   ...amplifyConfig,
   Auth: {
-    ...amplifyConfig.Auth,
-    credentials: awsCredentials
+    Cognito: {
+      // Add Cognito config if needed later
+    }
   }
 }
 
-Amplify.configure(fullConfig)
+Amplify.configure(config)
 
 export { Amplify }

@@ -1,7 +1,7 @@
 // Direct AWS S3 service for video uploads
 // This uses AWS SDK directly for reliable S3 uploads
 
-import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import { amplifyConfig, awsCredentials } from './amplify-config'
 
 export interface UploadProgress {
@@ -49,72 +49,64 @@ class S3StorageService {
   private region: string
 
   constructor() {
-    this.bucketName = amplifyConfig.Storage.AWSS3.bucket
-    this.region = amplifyConfig.Storage.AWSS3.region
+    this.bucketName = amplifyConfig.Storage.S3.bucket
+    this.region = amplifyConfig.Storage.S3.region
     
-    console.log('🔧 Initializing S3 client with config:', {
-      bucket: this.bucketName,
-      region: this.region,
-      accessKeyId: awsCredentials.accessKeyId.substring(0, 10) + '...',
-      secretKeyLength: awsCredentials.secretAccessKey.length
-    })
+    // Get credentials from environment variables (NEXT_PUBLIC_ prefixed for browser access)
+    const accessKeyId = process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID
+    const secretAccessKey = process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY
+    
+    console.log('🔧 Initializing S3 client...')
+    console.log('📍 Region:', this.region)
+    console.log('🪣 Bucket:', this.bucketName)
+    console.log('🔑 Access Key ID:', accessKeyId ? `${accessKeyId.substring(0, 8)}...` : 'Not set')
+    console.log('🔐 Secret Access Key:', secretAccessKey ? 'Set' : 'Not set')
     
     // Initialize S3 client with credentials
     this.s3Client = new S3Client({
       region: this.region,
       credentials: {
-        accessKeyId: awsCredentials.accessKeyId,
-        secretAccessKey: awsCredentials.secretAccessKey,
+        accessKeyId: accessKeyId,
+        secretAccessKey: secretAccessKey,
       },
     })
-    
-    console.log('✅ S3 client initialized successfully')
   }
 
   /**
-   * Upload a video file to S3
+   * Upload a video file to S3 using AWS SDK directly
    */
   async uploadVideo(
     file: File, 
     onProgress?: (progress: UploadProgress) => void
   ): Promise<UploadResult> {
-    console.log('🚀 Starting upload process...')
-    console.log('File details:', {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      lastModified: file.lastModified
-    })
-    console.log('S3 Config:', {
-      bucket: this.bucketName,
-      region: this.region
-    })
-    console.log('AWS Credentials:', {
-      accessKeyId: awsCredentials.accessKeyId.substring(0, 10) + '...',
-      region: awsCredentials.region
-    })
-
     try {
       // Generate unique key for the file
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-      const key = `${timestamp}-${file.name}`
-      console.log('Generated S3 key:', key)
+      const key = `videos/${timestamp}-${file.name}`
 
-      // Convert file to buffer
-      console.log('Converting file to buffer...')
-      const fileBuffer = await file.arrayBuffer()
-      console.log('File buffer size:', fileBuffer.byteLength)
+      console.log(`🚀 Uploading ${file.name} to S3 bucket: ${this.bucketName}`)
+      console.log(`📍 Region: ${this.region}`)
+      console.log(`🔑 Key: ${key}`)
+      console.log(`📊 File size: ${file.size} bytes`)
+      console.log(`🎬 File type: ${file.type}`)
+
+      // Validate credentials
+      const accessKeyId = process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID
+      const secretAccessKey = process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY
       
-      // Upload with progress tracking
-      if (onProgress) {
-        onProgress({
-          fileName: file.name,
-          progress: 0,
-          status: "uploading",
-          message: "Starting upload..."
-        })
+      if (!accessKeyId || accessKeyId === 'YOUR_ACCESS_KEY_HERE') {
+        throw new Error('AWS_ACCESS_KEY_ID is not configured properly in environment variables')
+      }
+      
+      if (!secretAccessKey || secretAccessKey === 'YOUR_SECRET_KEY_HERE') {
+        throw new Error('AWS_SECRET_ACCESS_KEY is not configured properly in environment variables')
       }
 
+      // Convert file to buffer
+      const fileBuffer = await file.arrayBuffer()
+      console.log(`📦 File buffer size: ${fileBuffer.byteLength} bytes`)
+      
+      // Create upload command
       const command = new PutObjectCommand({
         Bucket: this.bucketName,
         Key: key,
@@ -127,25 +119,14 @@ class S3StorageService {
         }
       })
 
-      console.log('S3 Command created:', {
-        Bucket: command.input.Bucket,
-        Key: command.input.Key,
-        ContentType: command.input.ContentType
-      })
-
-      if (onProgress) {
-        onProgress({
-          fileName: file.name,
-          progress: 50,
-          status: "uploading",
-          message: "Uploading to S3..."
-        })
-      }
-
-      console.log('Sending command to S3...')
+      console.log(`📤 Sending upload command to S3...`)
+      
+      // Upload to S3
       const result = await this.s3Client.send(command)
-      console.log('S3 Upload result:', result)
+      
+      console.log(`✅ Upload successful for ${file.name}:`, result)
 
+      // Simulate progress for UI
       if (onProgress) {
         onProgress({
           fileName: file.name,
@@ -155,18 +136,15 @@ class S3StorageService {
         })
       }
 
-      const uploadResult = {
+      return {
         key: key,
         url: `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${key}`,
         bucket: this.bucketName,
         region: this.region
       }
-
-      console.log('✅ Upload successful!', uploadResult)
-      return uploadResult
     } catch (error) {
       console.error('❌ Upload error details:', error)
-      console.error('Error type:', typeof error)
+      console.error('Error name:', error instanceof Error ? error.name : 'Unknown')
       console.error('Error message:', error instanceof Error ? error.message : 'Unknown error')
       console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace')
       
@@ -241,7 +219,7 @@ class S3StorageService {
       const command = new ListObjectsV2Command({
         Bucket: this.bucketName,
         Prefix: 'videos/',
-        MaxKeys: 1000
+        MaxKeys: 100
       })
 
       const result = await this.s3Client.send(command)
@@ -278,21 +256,25 @@ class S3StorageService {
   }
 
   /**
-   * Test S3 connection
+   * Download a video (if needed)
    */
-  async testConnection(): Promise<{ success: boolean; message: string; files?: VideoFile[] }> {
+  async downloadVideo(key: string): Promise<Blob> {
     try {
-      const files = await this.listVideos()
-      return {
-        success: true,
-        message: `Connected to S3 bucket '${this.bucketName}' in region '${this.region}'. Found ${files.length} files.`,
-        files
+      const command = new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: key
+      })
+
+      const result = await this.s3Client.send(command)
+      
+      if (!result.Body) {
+        throw new Error('No body in response')
       }
+
+      return await result.Body.transformToByteArray().then(bytes => new Blob([bytes]))
     } catch (error) {
-      return {
-        success: false,
-        message: `Failed to connect to S3: ${error instanceof Error ? error.message : 'Unknown error'}`
-      }
+      console.error('Error downloading video:', error)
+      throw new Error(`Failed to download video: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 }

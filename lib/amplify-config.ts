@@ -3,16 +3,9 @@
 
 export const amplifyConfig = {
   Storage: {
-    AWSS3: {
+    S3: {
       bucket: 'popopal-video-input', // Your existing S3 bucket
       region: 'us-east-1', // US East (N. Virginia)
-    }
-  },
-  Auth: {
-    // Optional: Add authentication later if needed
-    Cognito: {
-      userPoolId: 'us-east-1_XXXXXXXXX', // Add if using authentication
-      userPoolClientId: 'XXXXXXXXXXXXXXXXXXXXXXXXXX', // Add if using authentication
     }
   }
 }
@@ -20,7 +13,7 @@ export const amplifyConfig = {
 // Alternative: Use environment variables for configuration
 export const getAmplifyConfig = () => ({
   Storage: {
-    AWSS3: {
+    S3: {
       bucket: process.env.NEXT_PUBLIC_S3_BUCKET_NAME || 'popopal-video-input',
       region: process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1',
     }
@@ -29,7 +22,33 @@ export const getAmplifyConfig = () => ({
 
 // AWS Credentials configuration
 export const awsCredentials = {
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID 
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY 
-  region: 'us-east-1'
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID || process.env.NEXT_PUBLIC_AWS_ACCESS_KEY_ID || '',
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || process.env.NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY || '',
+  region: process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-1'
+}
+
+// Validate credentials on startup
+export const validateCredentials = () => {
+  const accessKey = awsCredentials.accessKeyId
+  const secretKey = awsCredentials.secretAccessKey
+  
+  console.log('🔍 Validating AWS credentials...')
+  console.log('📍 Region:', awsCredentials.region)
+  console.log('🔑 Access Key ID:', accessKey ? `${accessKey.substring(0, 8)}...` : 'Not set')
+  console.log('🔐 Secret Access Key:', secretKey ? 'Set' : 'Not set')
+  
+  if (!accessKey || accessKey === '' || accessKey === '') {
+    console.error('❌ AWS_ACCESS_KEY_ID is not set or invalid')
+    console.error('💡 Make sure AWS_ACCESS_KEY_ID is set in .env.local')
+    return false
+  }
+  
+  if (!secretKey || secretKey === '' || secretKey === '') {
+    console.error('❌ AWS_SECRET_ACCESS_KEY is not set or invalid')
+    console.error('💡 Make sure AWS_SECRET_ACCESS_KEY is set in .env.local')
+    return false
+  }
+  
+  console.log('✅ AWS credentials validated successfully')
+  return true
 }
