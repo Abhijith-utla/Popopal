@@ -4,6 +4,7 @@ import { useState, useCallback } from "react"
 import { useDropzone } from "react-dropzone"
 import { Button } from "@/components/ui/button"
 import { Upload, FileVideo, ArrowLeft } from "lucide-react"
+import { s3Storage, type UploadProgress, type VideoFile } from "@/lib/s3-storage"
 
 interface UploadViewProps {
   onFilesUploaded: (files: any[]) => void
@@ -12,22 +13,70 @@ interface UploadViewProps {
 
 export function UploadView({ onFilesUploaded, onBackToLanding }: UploadViewProps) {
   const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
+      console.log('📁 Files dropped in upload-view:', acceptedFiles)
+      
+      if (acceptedFiles.length === 0) {
+        console.log('No files to upload')
+        return
+      }
+      
       setIsUploading(true)
+      setUploadProgress(0)
 
-      setTimeout(() => {
-        const uploadResults = acceptedFiles.map((file) => ({
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          uploadedAt: new Date().toISOString(),
-        }))
-
+      try {
+        console.log('🚀 Starting S3 upload process...')
+        
+        // Upload each file individually to S3
+        const uploadedFiles = []
+        
+        for (let i = 0; i < acceptedFiles.length; i++) {
+          const file = acceptedFiles[i]
+          console.log(`Uploading file ${i + 1}/${acceptedFiles.length}:`, file.name)
+          
+          try {
+            const result = await s3Storage.uploadVideo(file, (progress) => {
+              console.log(`Progress for ${file.name}:`, progress)
+              setUploadProgress(progress.progress)
+            })
+            
+            console.log(`✅ Successfully uploaded ${file.name} to S3:`, result)
+            
+            // Create file data for UI
+            const fileData = {
+              name: file.name,
+              size: file.size,
+              type: file.type,
+              uploadedAt: new Date().toISOString(),
+              s3Key: result.key,
+              s3Url: result.url
+            }
+            
+            uploadedFiles.push(fileData)
+            
+          } catch (fileError) {
+            console.error(`❌ Failed to upload ${file.name}:`, fileError)
+            alert(`Failed to upload ${file.name}: ${fileError instanceof Error ? fileError.message : 'Unknown error'}`)
+          }
+        }
+        
+        console.log('✅ All uploads completed. Successfully uploaded:', uploadedFiles.length, 'files')
+        
+        if (uploadedFiles.length > 0) {
+          onFilesUploaded(uploadedFiles)
+          alert(`✅ Successfully uploaded ${uploadedFiles.length} file(s) to S3 bucket!`)
+        }
+        
+      } catch (error) {
+        console.error("Upload error:", error)
+        alert(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      } finally {
         setIsUploading(false)
-        onFilesUploaded(uploadResults)
-      }, 2000)
+        setUploadProgress(0)
+      }
     },
     [onFilesUploaded],
   )

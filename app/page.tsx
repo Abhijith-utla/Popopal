@@ -27,6 +27,7 @@ export default function Home() {
     setCurrentView("landing")
   }
 
+
   return (
     <main className="min-h-screen bg-background transition-colors duration-300">
       <div className="crime-scene-lights">

@@ -7,96 +7,104 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Upload, FileVideo, CheckCircle, Cloud, Database, Zap, Shield, Activity, X, Play } from "lucide-react"
-import { awsServices, AWS_CONFIG } from "@/lib/aws-services"
+import { s3Storage, type UploadProgress, type VideoFile } from "@/lib/s3-storage"
 
 interface UploadZoneProps {
   onFilesUploaded: (files: any[]) => void
 }
 
 export function UploadZone({ onFilesUploaded }: UploadZoneProps) {
-  const [uploadedFiles, setUploadedFiles] = useState<any[]>([])
+  const [uploadedFiles, setUploadedFiles] = useState<VideoFile[]>([])
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
+  const [currentUploadingFile, setCurrentUploadingFile] = useState<string>("")
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
+      console.log('📁 Files dropped:', acceptedFiles)
+      console.log('Number of files:', acceptedFiles.length)
+      
+      if (acceptedFiles.length === 0) {
+        console.log('No files to upload')
+        return
+      }
+      
       setIsUploading(true)
       setUploadProgress(0)
 
-      const newFiles = []
-
-      for (let i = 0; i < acceptedFiles.length; i++) {
-        const file = acceptedFiles[i]
-
-        // Simulate upload progress
-        for (let progress = 0; progress <= 100; progress += 10) {
-          setUploadProgress(progress)
-          await new Promise((resolve) => setTimeout(resolve, 100))
-        }
-
-        try {
-          // Mock S3 upload
-          const s3Result = await awsServices.uploadToS3(AWS_CONFIG.s3.bucketName, `dashcam-videos/${file.name}`, file)
-
-          // Mock Rekognition analysis
-          const rekognitionResult = await awsServices.analyzeVideo(s3Result.Location)
-
-          const fileData = {
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            uploadedAt: new Date().toISOString(),
-            s3Uri: s3Result.Location,
-            jobId: rekognitionResult.JobId,
-            analysisResults: {
-              confidence: Math.floor(Math.random() * 20) + 80, // 80-99%
-              incidents: [
-                {
-                  type: "Speeding Violation",
-                  severity: "high",
-                  timestamp: "02:15",
-                  confidence: 92,
-                  description: "Vehicle exceeded speed limit by 15 mph in a 35 mph zone",
-                },
-                {
-                  type: "Lane Departure",
-                  severity: "medium",
-                  timestamp: "05:42",
-                  confidence: 87,
-                  description: "Vehicle crossed lane markings without signaling",
-                },
-                {
-                  type: "Following Too Close",
-                  severity: "medium",
-                  timestamp: "08:33",
-                  confidence: 84,
-                  description: "Insufficient following distance detected",
-                },
-              ],
-              metadata: {
-                duration: "00:15:32",
-                location: "Highway 101, Mile Marker 45",
-                weather: "Clear",
-                timeOfDay: "Afternoon",
-              },
-            },
+      try {
+        console.log('🚀 Starting S3 upload process...')
+        
+        // Upload each file individually to S3
+        const uploadedFiles = []
+        
+        for (let i = 0; i < acceptedFiles.length; i++) {
+          const file = acceptedFiles[i]
+          console.log(`Uploading file ${i + 1}/${acceptedFiles.length}:`, file.name)
+          
+          try {
+            const result = await s3Storage.uploadVideo(file, (progress) => {
+              console.log(`Progress for ${file.name}:`, progress)
+              setUploadProgress(progress.progress)
+              setCurrentUploadingFile(progress.fileName)
+            })
+            
+            console.log(`✅ Successfully uploaded ${file.name} to S3:`, result)
+            
+            // Create file data for UI
+            const fileData = {
+              name: file.name,
+              size: file.size,
+              type: file.type,
+              uploadedAt: new Date().toISOString(),
+              s3Key: result.key,
+              s3Url: result.url,
+              analysisResults: {
+                confidence: Math.floor(Math.random() * 20) + 80,
+                incidents: [
+                  {
+                    type: "Speed Violation",
+                    severity: "high",
+                    timestamp: "02:15",
+                    confidence: 92,
+                    description: "Vehicle exceeded speed limit by 15 mph in a 35 mph zone"
+                  }
+                ],
+                metadata: {
+                  duration: "00:15:32",
+                  location: "Highway 101, Mile Marker 45",
+                  weather: "Clear",
+                  timeOfDay: "Afternoon"
+                }
+              }
+            }
+            
+            uploadedFiles.push(fileData)
+            
+          } catch (fileError) {
+            console.error(`❌ Failed to upload ${file.name}:`, fileError)
+            alert(`Failed to upload ${file.name}: ${fileError instanceof Error ? fileError.message : 'Unknown error'}`)
           }
-
-          newFiles.push(fileData)
-        } catch (error) {
-          console.error("Upload error:", error)
         }
-      }
-
-      setUploadedFiles((prev) => [...prev, ...newFiles])
-      setIsUploading(false)
-      setUploadProgress(0)
-
-      if (newFiles.length > 0) {
-        onFilesUploaded([...uploadedFiles, ...newFiles])
+        
+        console.log('✅ All uploads completed. Successfully uploaded:', uploadedFiles.length, 'files')
+        
+        if (uploadedFiles.length > 0) {
+          setUploadedFiles((prev) => [...prev, ...uploadedFiles])
+          onFilesUploaded([...uploadedFiles])
+          alert(`✅ Successfully uploaded ${uploadedFiles.length} file(s) to S3 bucket!`)
+        }
+        
+      } catch (error) {
+        console.error("Upload error:", error)
+        alert(`Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      } finally {
+        setIsUploading(false)
+        setUploadProgress(0)
+        setCurrentUploadingFile("")
       }
     },
-    [uploadedFiles, onFilesUploaded],
+    [onFilesUploaded],
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -111,6 +119,39 @@ export function UploadZone({ onFilesUploaded }: UploadZoneProps) {
     const newFiles = uploadedFiles.filter((_, i) => i !== index)
     setUploadedFiles(newFiles)
     onFilesUploaded(newFiles)
+  }
+
+  const testUpload = async () => {
+    console.log('🧪 Testing upload with sample file...')
+    const testContent = `Test video upload - ${new Date().toISOString()}`
+    const testFile = new File([testContent], `test-${Date.now()}.txt`, { type: 'text/plain' })
+    
+    try {
+      const result = await s3Storage.uploadVideo(testFile, (progress) => {
+        console.log('Test upload progress:', progress)
+      })
+      console.log('✅ Test upload successful:', result)
+      alert('✅ Test upload successful! Check console for details.')
+    } catch (error) {
+      console.error('❌ Test upload failed:', error)
+      alert(`❌ Test upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  const testConnection = async () => {
+    console.log('🔍 Testing S3 connection...')
+    try {
+      const result = await s3Storage.testConnection()
+      console.log('Connection test result:', result)
+      if (result.success) {
+        alert(`✅ S3 Connection successful! ${result.message}`)
+      } else {
+        alert(`❌ S3 Connection failed: ${result.message}`)
+      }
+    } catch (error) {
+      console.error('❌ Connection test failed:', error)
+      alert(`❌ Connection test failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
   }
 
   return (
@@ -155,6 +196,14 @@ export function UploadZone({ onFilesUploaded }: UploadZoneProps) {
             <CardDescription className="text-lg">
               Drag and drop your video files or click to browse. Supports MP4, AVI, MOV, and MKV formats.
             </CardDescription>
+            <div className="mt-4 flex gap-2 justify-center">
+              <Button onClick={testConnection} variant="outline" size="sm">
+                🔍 Test Connection
+              </Button>
+              <Button onClick={testUpload} variant="outline" size="sm">
+                🧪 Test Upload
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <div
@@ -215,6 +264,9 @@ export function UploadZone({ onFilesUploaded }: UploadZoneProps) {
                     </div>
                     <div className="space-y-2">
                       <p className="font-semibold text-lg">Uploading to AWS S3...</p>
+                      {currentUploadingFile && (
+                        <p className="text-sm text-muted-foreground">Uploading: {currentUploadingFile}</p>
+                      )}
                       <Progress value={uploadProgress} className="w-64 mx-auto" />
                       <p className="text-sm text-muted-foreground">{uploadProgress}% complete</p>
                     </div>
@@ -256,10 +308,12 @@ export function UploadZone({ onFilesUploaded }: UploadZoneProps) {
                             <Cloud className="h-3 w-3 mr-1" />
                             AWS S3
                           </Badge>
-                          <Badge variant="default" className="text-xs bg-green-100 text-green-800">
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            Analyzed
-                          </Badge>
+                          {file.analysisResults && (
+                            <Badge variant="default" className="text-xs bg-green-100 text-green-800">
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Analyzed
+                            </Badge>
+                          )}
                         </div>
                       </div>
                     </div>

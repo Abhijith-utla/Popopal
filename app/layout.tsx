@@ -4,6 +4,7 @@ import { Inter, JetBrains_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { Suspense } from "react"
 import "./globals.css"
+// S3 storage is initialized when needed
 
 const inter = Inter({
   subsets: ["latin"],
